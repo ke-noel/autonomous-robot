@@ -1,3 +1,12 @@
+/* Program for self-driving robot
+ * Senses objects using liDAR and ultrasonic and avoids them,
+ * prioritizing ultrasonic
+ */
+
+
+
+
+
 /* LiDAR pins
   black - GND (to Arduino GND)
   red --- 5V (to Arduino 5V)
@@ -5,34 +14,39 @@
   green - liDAR TX (to Arduino RX)  
 */
 
-// Ultrasonic pins
-  #define ultraEchoPinFL 0
-  #define ultraTrigPinFL 1
+// Ultrasonic pin definitions
+// arranged at 45, 20 and 5 degrees from the left and right
+#define ultraTrig45R 0
+#define ultraEcho45R 1
+#define ultraTrig20R 2
+#define ultraEcho20R 3
+#define ultraTrig5R 4
+#define ultraEcho5R 5
+#define ultraTrig5L 6
+#define ultraEcho5L 7
+#define ultraTrig20L 8
+#define ultraEcho20L 9
+#define ultraTrig45L 10
+#define ultraEcho45L 11
 
-  #define ultraEchoPinFR 2
-  #define ultraTrigPinFR 3
+// Compass module pins
 
-  #define ultraEchoPinL 4
-  #define ultraTrigPinL 5
+// Motor pins
+#define leftMotor 12
+#define rightMotor 13
 
-  #define ultraEchoPinR 6
-  #define ultraTrigPinR 7
+float dist45R;
+float dist20R;
+float dist5R;
+float dist5L;
+float dist20L;
+float dist45L;
 
-  #define ultraEchoPinBL 8
-  #define ultraTrigPinBL 9
-
-  #define ultraEchoPinBR 10
-  #define ultraTrigPinBR 11
-
-enum ultrasonic {LL,CL,CC,CR,RR}; // L (left), C (centre), R (right)
-
-double ultraLL;
-double ultraCL;
-double ultraCC;
-double ultraCR;
-double ultraRR;
+bool isNearZone; // is an object in the near zone?
 
 volatile int liDARval;
+
+float speed = 0;
 
 void setup() {
   Serial1.begin(115200); // HW serial for LiDAR
@@ -52,23 +66,23 @@ void setup() {
   // Setup thread for reading the serial input from the LIDAR
   // needs include library not yet installed...
   
-  pinMode(ultraEchoPinFL, INPUT);
-  pinMode(ultraTrigPinFL, OUTPUT);
+  pinMode(ultraEcho45R, INPUT);
+  pinMode(ultraTrig45R, OUTPUT);
   
-  pinMode(ultraEchoPinFR, INPUT);
-  pinMode(ultraTrigPinFR, OUTPUT);
+  pinMode(ultraEcho20R, INPUT);
+  pinMode(ultraTrig20R, OUTPUT);
   
-  pinMode(ultraEchoPinL, INPUT);
-  pinMode(ultraTrigPinL, OUTPUT);
+  pinMode(ultraEcho5R, INPUT);
+  pinMode(ultraTrig5R, OUTPUT);
   
-  pinMode(ultraEchoPinR, INPUT);
-  pinMode(ultraTrigPinR, OUTPUT);
+  pinMode(ultraEcho5L, INPUT);
+  pinMode(ultraTrig5L, OUTPUT);
   
-  pinMode(ultraEchoPinBL, INPUT);
-  pinMode(ultraTrigPinBL, OUTPUT);
+  pinMode(ultraEcho20L, INPUT);
+  pinMode(ultraTrig20L, OUTPUT);
   
-  pinMode(ultraEchoPinBR, INPUT);
-  pinMode(ultraTrigPinBR, OUTPUT);
+  pinMode(ultraEcho45R, INPUT);
+  pinMode(ultraTrig45R, OUTPUT);
 }
 
 double readLiDAR() {
@@ -101,23 +115,36 @@ double readLiDAR() {
   return liDARval;
 }
 
-double getUltrasonicDistance (double duration) {
-  /* At 21 C, v sound = 340 m/s = 0.034 cm/microsecond
-   * So, distance = (0.034cm/microsecond) * time
-   */
-  return (duration / 2) / 29.1; // check value
-}
-
-void readUltrasonic(int echoPin) {
-  long duration, distance;
+float readUltrasonic(int echoPin, int trigPin) {
   digitalWrite(echoPin + 1, LOW);
   delayMicroseconds(2);
   digitalWrite(echoPin + 1, HIGH);
   delayMicroseconds(10);
   digitalWrite(echoPin + 1, LOW);
-  duration = pulseIn(echoPin, HIGH); // in microseconds
-  
-  return getUltrasonicDistance(duration);  
+  float duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.0345 / 2; // in cm
+  if (distance < 3 || distance > 275) { // ultrasonic rated accurate from 3 to 300 cm
+    distance = 0;
+  } else if (distance < 100) {
+    isNearZone = true; // object is detected in the near zone
+  }
+  return distance;
+}
+
+void updateUltrasonic() {
+  dist45R = readUltrasonic(ultraEcho45R, ultraEcho45R);
+  dist20R = readUltrasonic(ultraEcho20R, ultraEcho20R);
+  dist5R = readUltrasonic(ultraEcho5R, ultraEcho5R);
+  dist5R = readUltrasonic(ultraEcho5L, ultraEcho5L);
+  dist20R = readUltrasonic(ultraEcho20L, ultraEcho20L);
+  dist45R = readUltrasonic(ultraEcho45L, ultraEcho45L);
+}
+
+float getReboundAngle() { // left is positive, right is negative
+  // Bubble rebound algorithm
+  float angle_dist = (45 * (dist45L - dist45R)) + (20 * (dist20L - dist20R)) + (5 * (dist5L - dist5R));
+  float sum = dist45L + dist20L + dist5L + dist5R + dist20R + dist45R;
+  return angle_dist / sum;
 }
 
 void setMotorSpeed(int motorPin, double motorSpeed) {
@@ -125,18 +152,48 @@ void setMotorSpeed(int motorPin, double motorSpeed) {
 }
 
 void stopMotors() {
-  for (int x = 0; x < 3; x++) {
-    setMotorSpeed(x, 0);
+  analogWrite(leftMotor, 0);
+  analogWrite(rightMotor, 0);
+}
+
+void updateSpeed(int distance) { // test for units!!!!!!!
+  /* If nothing is detected in near zone,
+     use the liDAR-detected distance to determine speed.
+     The further the nearest detected obstacle, the faster
+     the speed up to a max of ___. <-- check with motor controller
+  */
+  if (distance > 20) { // assuming measured in metres
+    speed += 0.2;
+  } else {
+    speed -= 0.2;
   }
 }
 
 void loop() {
-  // check sensors
-    // check ultrasonic
-      // if anything detected by ultrasonic, prioritize ultrasonic
-        // in front? close? stop.
-        // bubble rebound algorithm
-      // otherwise prioritize liDAR
-        // 
-  delay(50);
+  updateUltrasonic();
+  if (isNearZone) { // an object is detected by the ultrasonic sensors
+    float reboundAngle = getReboundAngle();
+    float startingHeading = 0.0; // CATHERINE STUFF GOES HERE
+    float currentHeading = 0.0;
+    
+      if(reboundAngle > 0) { // must turn left
+        stopMotors();
+        while (abs(currentHeading - startingHeading) < reboundAngle) {
+          setMotorSpeed(leftMotor, 1);
+          setMotorSpeed(rightMotor, 0);
+          delay(50);
+        }
+      } else { // must turn right
+        while (abs(currentHeading - startingHeading) < reboundAngle) {
+          setMotorSpeed(rightMotor, 1);
+          setMotorSpeed(leftMotor, 0);
+          delay(50);
+        }
+      }
+  } else {
+    updateSpeed(readLiDAR());
+    setMotorSpeed(leftMotor, speed);
+    setMotorSpeed(rightMotor, speed);
+  }
+  delay(100);
 }
