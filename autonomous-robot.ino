@@ -1,11 +1,14 @@
 /* Program for self-driving robot
  * Senses objects using liDAR and ultrasonic and avoids them,
- * prioritizing ultrasonic
+ * prioritizing ultrasonic. A bubble rebound algorithm is used
+ * with the ultrasonic sensor data to choose the path with the
+ * fewest obstacles. The liDAR (TFMini) rangefinder is used to
+ * determine speed; the further away the object detected, the 
+ * faster the speed.
+ *
+ * The ultrasonic detection zone will be referred to as the near zone.
+ * The liDAR detection zone will be referred to as the far zone.
  */
-
-
-
-
 
 /* LiDAR pins
   black - GND (to Arduino GND)
@@ -48,12 +51,13 @@ volatile int liDARval;
 
 float speed = 0;
 
+
 void setup() {
-  Serial1.begin(115200); // HW serial for LiDAR
+  Serial1.begin(115200); // HW serial for liDAR
   Serial.begin(3600); // USB to computer serial
   delay(100);
 
-  // Set to standard output mode
+  // Setup TFMini for standard output mode
   Serial1.write(0x42);
   Serial1.write(0x57);
   Serial1.write(0x02);
@@ -66,6 +70,7 @@ void setup() {
   // Setup thread for reading the serial input from the LIDAR
   // needs include library not yet installed...
   
+  // Setup ultrasonics
   pinMode(ultraEcho45R, INPUT);
   pinMode(ultraTrig45R, OUTPUT);
   
@@ -86,8 +91,9 @@ void setup() {
 }
 
 double readLiDAR() {
+  // Returns the current distance read by the liDAR
   // SHOULD BE IN ITS OWN THREAD
-  /* Input format for TFMini LiDAR
+  /* Input format for TFMini liDAR
     1) 0x59
     2) 0x59
     3) Dist_L (low 8bit)
@@ -116,6 +122,7 @@ double readLiDAR() {
 }
 
 float readUltrasonic(int echoPin, int trigPin) {
+  // Return the current distance reading from the specified ultrasonic
   digitalWrite(echoPin + 1, LOW);
   delayMicroseconds(2);
   digitalWrite(echoPin + 1, HIGH);
@@ -132,6 +139,7 @@ float readUltrasonic(int echoPin, int trigPin) {
 }
 
 void updateUltrasonic() {
+  // Grab the new distance readings for all of the ultrasonics
   dist45R = readUltrasonic(ultraEcho45R, ultraEcho45R);
   dist20R = readUltrasonic(ultraEcho20R, ultraEcho20R);
   dist5R = readUltrasonic(ultraEcho5R, ultraEcho5R);
@@ -141,19 +149,21 @@ void updateUltrasonic() {
 }
 
 float getReboundAngle() { // left is positive, right is negative
-  // Bubble rebound algorithm
+  // Bubble rebound algorithm using ultrasonic data to return the angle to 
+  // get to the path with the fewest/furthest obstacles
   float angle_dist = (45 * (dist45L - dist45R)) + (20 * (dist20L - dist20R)) + (5 * (dist5L - dist5R));
   float sum = dist45L + dist20L + dist5L + dist5R + dist20R + dist45R;
   return angle_dist / sum;
 }
 
 void setMotorSpeed(int motorPin, double motorSpeed) {
-  analogWrite(motorPin, motorSpeed);
+  // Control the motor speeds using Servo class
+  //analogWrite(motorPin, motorSpeed);
 }
 
 void stopMotors() {
-  analogWrite(leftMotor, 0);
-  analogWrite(rightMotor, 0);
+  setMotorSpeed(leftMotor, 0);
+  setMotorSpeed(rightMotor, 0);
 }
 
 void updateSpeed(int distance) { // test for units!!!!!!!
@@ -163,9 +173,9 @@ void updateSpeed(int distance) { // test for units!!!!!!!
      the speed up to a max of ___. <-- check with motor controller
   */
   if (distance > 20) { // assuming measured in metres
-    speed += 0.2;
+    speed += 0.2; // change for Servo class
   } else {
-    speed -= 0.2;
+    speed -= 0.2; // change for Servo class
   }
 }
 
@@ -173,8 +183,8 @@ void loop() {
   updateUltrasonic();
   if (isNearZone) { // an object is detected by the ultrasonic sensors
     float reboundAngle = getReboundAngle();
-    float startingHeading = 0.0; // CATHERINE STUFF GOES HERE
-    float currentHeading = 0.0;
+    float startingHeading = 0.0; // PH: COMPASS MODULE STUFF GOES HERE
+    float currentHeading = 0.0; // PH
     
       if(reboundAngle > 0) { // must turn left
         stopMotors();
@@ -191,6 +201,7 @@ void loop() {
         }
       }
   } else {
+    // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
     setMotorSpeed(leftMotor, speed);
     setMotorSpeed(rightMotor, speed);
