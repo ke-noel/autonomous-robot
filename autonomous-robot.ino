@@ -10,6 +10,9 @@
  * The liDAR detection zone will be referred to as the far zone.
  */
 
+// __________________________________________________________________________
+// Note: pins are not final, some may not be on the appropriate type right now
+
 /* LiDAR pins
   black - GND (to Arduino GND)
   red --- 5V (to Arduino 5V)
@@ -34,10 +37,12 @@
 
 // Compass module pins
 
-// Motor pins
+// Victor888 motor controller pins
 #define leftMotor 12
 #define rightMotor 13
 
+// Ultrasonic sensors distances from different angles
+// ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
 float dist45R;
 float dist20R;
 float dist5R;
@@ -45,11 +50,11 @@ float dist5L;
 float dist20L;
 float dist45L;
 
-bool isNearZone; // is an object in the near zone?
+bool isNearZone; // aka did any ultrasonic detect something within 75cm?
 
-volatile int liDARval;
+volatile int liDARdist; // the reading from the liDAR
 
-float speed = 0;
+float speed = 127; // initial motor speed; PWM 127 is stopped
 
 
 void setup() {
@@ -108,17 +113,13 @@ double readLiDAR() {
     if((0x59 == Serial1.read()) && (0x59 == Serial1.read())) { // byte 1 and 2
       unsigned int t1 = Serial1.read(); // byte 3 (Dist_L)
       unsigned int t2 = Serial1.read(); // byte 4 (Dist_H)
-      t2 <<= 8;
+      t2 <<= 8; // shift one byte left
       t2 += t1;
       liDARval = t2;
-      t1 = Serial1.read(); // byte 5 (Strength_L)
-      t2 = Serial1.read(); // byte 6 (Strength_H)
-      t2 <<= 8;
-      t2 += 1;
-      for(int i=0; i<3; i++)Serial1.read(); // byte 7, 8, 9 are ignored
+      for(int i=0; i<5; i++)Serial1.read(); // byte 7, 8, 9 are ignored
     }    
   }
-  return liDARval;
+  return liDARdist; // in cm
 }
 
 float readUltrasonic(int echoPin, int trigPin) {
@@ -132,7 +133,7 @@ float readUltrasonic(int echoPin, int trigPin) {
   float distance = duration * 0.0345 / 2; // in cm
   if (distance < 3 || distance > 275) { // ultrasonic rated accurate from 3 to 300 cm
     distance = 0;
-  } else if (distance < 100) {
+  } else if (distance < 75) {
     isNearZone = true; // object is detected in the near zone
   }
   return distance;
@@ -157,31 +158,35 @@ float getReboundAngle() { // left is positive, right is negative
 }
 
 void setMotorSpeed(int motorPin, double motorSpeed) {
-  // Control the motor speeds using Servo class
-  //analogWrite(motorPin, motorSpeed);
+  /* Control the motor speed using the Victor888's
+  *  0   - full speed backwards
+  *  127 - stopped
+  *  255 - full speed forwards
+  */
+  analogWrite(motorPin, motorSpeed);
 }
 
 void stopMotors() {
-  setMotorSpeed(leftMotor, 0);
-  setMotorSpeed(rightMotor, 0);
+  setMotorSpeed(leftMotor, 127);
+  setMotorSpeed(rightMotor, 127);
 }
 
-void updateSpeed(int distance) { // test for units!!!!!!!
+void updateSpeed(int distance) { // distance is in cm
   /* If nothing is detected in near zone,
      use the liDAR-detected distance to determine speed.
      The further the nearest detected obstacle, the faster
      the speed up to a max of ___. <-- check with motor controller
   */
-  if (distance > 20) { // assuming measured in metres
-    speed += 0.2; // change for Servo class
-  } else {
-    speed -= 0.2; // change for Servo class
+  if (distance > 1000 && (speed + 1) < 255) { // assuming measured in metres
+    speed++;
+  } else if (distance < 500 && (speed - 1) > 127) {
+    speed--;
   }
 }
 
 void loop() {
   updateUltrasonic();
-  if (isNearZone) { // an object is detected by the ultrasonic sensors
+  if (isNearZone) { // an object is detected within 75cm
     float reboundAngle = getReboundAngle();
     float startingHeading = 0.0; // PH: COMPASS MODULE STUFF GOES HERE
     float currentHeading = 0.0; // PH
@@ -189,18 +194,18 @@ void loop() {
       if(reboundAngle > 0) { // must turn left
         stopMotors();
         while (abs(currentHeading - startingHeading) < reboundAngle) {
-          setMotorSpeed(leftMotor, 1);
-          setMotorSpeed(rightMotor, 0);
+          setMotorSpeed(leftMotor, 154); // forward
+          setMotorSpeed(rightMotor, 100); // backward
           delay(50);
         }
       } else { // must turn right
         while (abs(currentHeading - startingHeading) < reboundAngle) {
-          setMotorSpeed(rightMotor, 1);
-          setMotorSpeed(leftMotor, 0);
+          setMotorSpeed(rightMotor, 100); // backward
+          setMotorSpeed(leftMotor, 154); // forward
           delay(50);
         }
       }
-  } else {
+  } else { // There is nothing within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
     setMotorSpeed(leftMotor, speed);
