@@ -177,7 +177,7 @@ void updateSpeed(int distance) { // distance is in cm
      The further the nearest detected obstacle, the faster
      the speed up to a max of ___. <-- check with motor controller
   */
-  if (distance > 1000 && (speed + 1) < 255) { // assuming measured in metres
+  if (distance > 1000 && (speed + 1) < 255) {
     speed++;
   } else if (distance < 500 && (speed - 1) > 127) {
     speed--;
