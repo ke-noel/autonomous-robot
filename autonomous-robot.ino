@@ -56,6 +56,8 @@ volatile int liDARdist; // the reading from the liDAR
 
 float speed = 127; // initial motor speed; PWM 127 is stopped
 
+int16_t GyX,GyY,GyZ // variables for gyro raw data
+
 
 void setup() {
   Serial1.begin(115200); // HW serial for liDAR
@@ -93,6 +95,14 @@ void setup() {
   
   pinMode(ultraEcho45R, INPUT);
   pinMode(ultraTrig45R, OUTPUT);
+  
+  Wire.begin();
+  Wire.beginTransmission(MPU); // begins a trnasmission to the GY-521
+  Wire.write(0x6B); 
+  Wire.write(0); // set to zero    
+  Wire.endTransmission(true);
+  Serial.begin(9600);
+  
 }
 
 double readLiDAR() {
@@ -190,6 +200,22 @@ void loop() {
     float reboundAngle = getReboundAngle();
     float startingHeading = 0.0; // PH: COMPASS MODULE STUFF GOES HERE
     float currentHeading = 0.0; // PH
+  
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);  
+  Wire.endTransmission(false); //parameter indicates that the Arduino will send a restart. The connection is kept active
+  Wire.requestFrom(MPU,12,true); //request a total of 12 registers 
+  
+  GyX=Wire.read()<<8|Wire.read(); 
+  GyY=Wire.read()<<8|Wire.read();  
+  GyZ=Wire.read()<<8|Wire.read();  
+  
+  Serial.print("Gyroscope: "); //prints data from gyro, into readable data
+  Serial.print("X = "); Serial.print(GyX);
+  Serial.print(" | Y = "); Serial.print(GyY);
+  Serial.print(" | Z = "); Serial.println(GyZ);
+  Serial.println(" ");
+  delay(350);
     
       if(reboundAngle > 0) { // must turn left
         stopMotors();
@@ -212,4 +238,5 @@ void loop() {
     setMotorSpeed(rightMotor, speed);
   }
   delay(100);
+  
 }
