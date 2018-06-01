@@ -22,24 +22,26 @@
 
 // Ultrasonic pin definitions
 // arranged at 45, 20 and 5 degrees from the left and right
-#define ultraTrig45R 0
-#define ultraEcho45R 1
-#define ultraTrig20R 2
-#define ultraEcho20R 3
-#define ultraTrig5R 4
-#define ultraEcho5R 5
-#define ultraTrig5L 6
-#define ultraEcho5L 7
-#define ultraTrig20L 8
-#define ultraEcho20L 9
-#define ultraTrig45L 10
-#define ultraEcho45L 11
+#define ultraTrig45R 24
+#define ultraEcho45R 22
+#define ultraTrig20R 28
+#define ultraEcho20R 26
+#define ultraTrig5R 32
+#define ultraEcho5R 30
+#define ultraTrig5L 36
+#define ultraEcho5L 34
+#define ultraTrig20L 40
+#define ultraEcho20L 38
+#define ultraTrig45L 44
+#define ultraEcho45L 42
 
 // Compass module pins
+#define gyroSDA A0
+#define gyroSCL A1
 
 // Victor888 motor controller pins
-#define leftMotor 12
-#define rightMotor 13
+#define leftMotor 2 // PWM
+#define rightMotor 3 // PWM
 
 // Ultrasonic sensors distances from different angles
 // ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
@@ -57,7 +59,6 @@ volatile int liDARdist; // the reading from the liDAR
 float speed = 127; // initial motor speed; PWM 127 is stopped
 
 int16_t GyX,GyY,GyZ // variables for gyro raw data
-
 
 void setup() {
   Serial1.begin(115200); // HW serial for liDAR
@@ -134,6 +135,7 @@ double readLiDAR() {
 
 float readUltrasonic(int echoPin, int trigPin) {
   // Return the current distance reading from the specified ultrasonic
+  // Flag isNearZone if something's within 75cm
   digitalWrite(echoPin + 1, LOW);
   delayMicroseconds(2);
   digitalWrite(echoPin + 1, HIGH);
@@ -144,7 +146,7 @@ float readUltrasonic(int echoPin, int trigPin) {
   if (distance < 3 || distance > 275) { // ultrasonic rated accurate from 3 to 300 cm
     distance = 0;
   } else if (distance < 75) {
-    isNearZone = true; // object is detected in the near zone
+    isNearZone = true;
   }
   return distance;
 }
@@ -199,8 +201,8 @@ void loop() {
   if (isNearZone) { // an object is detected within 75cm
     float reboundAngle = getReboundAngle();
     float startingHeading = 0.0; // PH: COMPASS MODULE STUFF GOES HERE
-    float currentHeading = 0.0; // PH
-  
+    float currentHeading = startingHeading;
+    
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);  
   Wire.endTransmission(false); //parameter indicates that the Arduino will send a restart. The connection is kept active
@@ -215,21 +217,21 @@ void loop() {
   Serial.print(" | Y = "); Serial.print(GyY);
   Serial.print(" | Z = "); Serial.println(GyZ);
   Serial.println(" ");
-  delay(350);
+  delay(350); // is there any way to reduce this delay?
     
-      if(reboundAngle > 0) { // must turn left
-        stopMotors();
-        while (abs(currentHeading - startingHeading) < reboundAngle) {
-          setMotorSpeed(leftMotor, 154); // forward
-          setMotorSpeed(rightMotor, 100); // backward
+      if (reboundAngle > 0) { // must turn left
+        int leftMotorSpeed = 154;
+        int rightMotorSpeed = 100;
+      } else { //turn right
+        int leftMotorSpeed = 100;
+        int rightMotorSpeed = 154;
+      }
+    
+      while (abs(currentHeading - startingHeading) > reboundAngle) {
+          setMotorSpeed(leftMotor, leftMotorSpeed);
+          setMotorSpeed(rightMotor, rightMotorSpeed);
           delay(50);
-        }
-      } else { // must turn right
-        while (abs(currentHeading - startingHeading) < reboundAngle) {
-          setMotorSpeed(rightMotor, 100); // backward
-          setMotorSpeed(leftMotor, 154); // forward
-          delay(50);
-        }
+          // call compass module here to update current heading
       }
   } else { // There is nothing within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
