@@ -59,6 +59,7 @@ volatile int liDARdist; // the reading from the liDAR
 float speed = 127; // initial motor speed; PWM 127 is stopped
 
 int16_t GyX,GyY,GyZ // variables for gyro raw data
+const int MPU=0x68;
 
 void setup() {
   Serial1.begin(115200); // HW serial for liDAR
@@ -211,13 +212,22 @@ void loop() {
   GyX=Wire.read()<<8|Wire.read(); 
   GyY=Wire.read()<<8|Wire.read();  
   GyZ=Wire.read()<<8|Wire.read();  
+  int xAng = map(AcX,minVal,maxVal,-90,90); int yAng = map(AcY,minVal,maxVal,-90,90); int zAng = map(AcZ,minVal,maxVal,-90,90);
+
+x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+
+Serial.print("AngleX= "); Serial.println(x);
+
+Serial.print("AngleY= "); Serial.println(y);
+
+Serial.print("AngleZ= "); Serial.println(z); Serial.println("-------"); delay(100); //don't know how to grab current heading, can find angle with gyro though.
   
   Serial.print("Gyroscope: "); //prints data from gyro, into readable data
   Serial.print("X = "); Serial.print(GyX);
   Serial.print(" | Y = "); Serial.print(GyY);
   Serial.print(" | Z = "); Serial.println(GyZ);
   Serial.println(" ");
-  delay(350); // is there any way to reduce this delay?
+  delay(100); // is there any way to reduce this delay?
     
       if (reboundAngle > 0) { // must turn left
         int leftMotorSpeed = 154;
