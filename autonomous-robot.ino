@@ -1,3 +1,5 @@
+#include "Servo.h"
+
 /* Program for self-driving robot
  * Senses objects using liDAR and ultrasonic and avoids them,
  * prioritizing ultrasonic. A bubble rebound algorithm is used
@@ -9,9 +11,6 @@
  * The ultrasonic detection zone will be referred to as the near zone.
  * The liDAR detection zone will be referred to as the far zone.
  */
-
-// __________________________________________________________________________
-// Note: pins are not final, some may not be on the appropriate type right now
 
 /* LiDAR pins
   black - GND (to Arduino GND)
@@ -40,8 +39,11 @@
 #define gyroSCL A1
 
 // Victor888 motor controller pins
-#define leftMotor 2 // PWM
-#define rightMotor 3 // PWM
+#define leftMotorPin 2 // PWM
+#define rightMotorPin 3 // PWM
+Servo leftMotor;
+Servo rightMotor;
+float speed;
 
 // Ultrasonic sensors distances from different angles
 // ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
@@ -56,14 +58,12 @@ bool isNearZone; // aka did any ultrasonic detect something within 75cm?
 
 volatile int liDARdist; // the reading from the liDAR
 
-float speed = 127; // initial motor speed; PWM 127 is stopped
-
 int16_t GyX,GyY,GyZ // variables for gyro raw data
 const int MPU=0x68;
 
 void setup() {
   Serial1.begin(115200); // HW serial for liDAR
-  Serial.begin(3600); // USB to computer serial
+  Serial.begin(9600); // USB to computer serial
   delay(100);
 
   // Setup TFMini for standard output mode
@@ -75,9 +75,6 @@ void setup() {
   Serial1.write(0x00);
   Serial1.write(0x01);
   Serial1.write(0x06);
-  
-  // Setup thread for reading the serial input from the LIDAR
-  // needs include library not yet installed...
   
   // Setup ultrasonics
   pinMode(ultraEcho45R, INPUT);
@@ -97,14 +94,20 @@ void setup() {
   
   pinMode(ultraEcho45R, INPUT);
   pinMode(ultraTrig45R, OUTPUT);
-  
+
+  // Setup compass module
   Wire.begin();
   Wire.beginTransmission(MPU); // begins a trnasmission to the GY-521
   Wire.write(0x6B); 
   Wire.write(0); // set to zero    
   Wire.endTransmission(true);
-  Serial.begin(9600);
-  
+
+  //Setup motor controllers
+  speed = 1500;
+  leftMotor.attach(leftMotorPin);
+  leftMotor.writeMicroseconds(speed); //stopped
+  rightMotor.attach(rightMotorPin);
+  rightMotor.writeMicroseconds(speed); //stopped
 }
 
 double readLiDAR() {
@@ -172,16 +175,16 @@ float getReboundAngle() { // left is positive, right is negative
 
 void setMotorSpeed(int motorPin, double motorSpeed) {
   /* Control the motor speed using the Victor888's
-  *  0   - full speed backwards
-  *  127 - stopped
-  *  255 - full speed forwards
+  *  1300   - full speed backwards
+  *  1500 - stopped
+  *  1700 - full speed forwards
   */
   analogWrite(motorPin, motorSpeed);
 }
 
 void stopMotors() {
-  setMotorSpeed(leftMotor, 127);
-  setMotorSpeed(rightMotor, 127);
+  setMotorSpeed(leftMotor, 1500);
+  setMotorSpeed(rightMotor, 1500);
 }
 
 void updateSpeed(int distance) { // distance is in cm
@@ -197,13 +200,7 @@ void updateSpeed(int distance) { // distance is in cm
   }
 }
 
-void loop() {
-  updateUltrasonic();
-  if (isNearZone) { // an object is detected within 75cm
-    float reboundAngle = getReboundAngle();
-    float startingHeading = 0.0; // PH: COMPASS MODULE STUFF GOES HERE
-    float currentHeading = startingHeading;
-    
+void updateCompassModule() {
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);  
   Wire.endTransmission(false); //parameter indicates that the Arduino will send a restart. The connection is kept active
@@ -214,41 +211,53 @@ void loop() {
   GyZ=Wire.read()<<8|Wire.read();  
   int xAng = map(AcX,minVal,maxVal,-90,90); int yAng = map(AcY,minVal,maxVal,-90,90); int zAng = map(AcZ,minVal,maxVal,-90,90);
 
-x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+  x = RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+  
+  Serial.print("AngleX= "); Serial.println(x);
 
-Serial.print("AngleX= "); Serial.println(x);
+  Serial.print("AngleY= "); Serial.println(y);
 
-Serial.print("AngleY= "); Serial.println(y);
-
-Serial.print("AngleZ= "); Serial.println(z); Serial.println("-------"); delay(100); //don't know how to grab current heading, can find angle with gyro though.
+  Serial.print("AngleZ= "); Serial.println(z); Serial.println("-------"); delay(100); //don't know how to grab current heading, can find angle with gyro though.
   
   Serial.print("Gyroscope: "); //prints data from gyro, into readable data
   Serial.print("X = "); Serial.print(GyX);
   Serial.print(" | Y = "); Serial.print(GyY);
   Serial.print(" | Z = "); Serial.println(GyZ);
-  Serial.println(" ");
-  delay(100); // is there any way to reduce this delay?
+}
+
+float getHeading() {
+  updateCompassModule();
+  // rando mathy stuff LUUUUUUUCCCCCCCCCCCC
+}
+
+void loop() {
+  updateUltrasonic();
+  if (isNearZone) { // an object is detected within 75cm
+    float reboundAngle = getReboundAngle();
+    float startingHeading = getHeading()
+    float currentHeading = startingHeading;
     
       if (reboundAngle > 0) { // must turn left
-        int leftMotorSpeed = 154;
-        int rightMotorSpeed = 100;
+        int leftMotorSpeed = 1600;
+        int rightMotorSpeed = 1300;
       } else { //turn right
-        int leftMotorSpeed = 100;
-        int rightMotorSpeed = 154;
+        int leftMotorSpeed = 1300;
+        int rightMotorSpeed = 1600;
       }
     
       while (abs(currentHeading - startingHeading) > reboundAngle) {
           setMotorSpeed(leftMotor, leftMotorSpeed);
           setMotorSpeed(rightMotor, rightMotorSpeed);
           delay(50);
-          // call compass module here to update current heading
+          stopMotors();
+          currentHeading = getHeading();
       }
   } else { // There is nothing within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
+    // add speed control stuff here
     setMotorSpeed(leftMotor, speed);
     setMotorSpeed(rightMotor, speed);
   }
   delay(100);
-  
 }
