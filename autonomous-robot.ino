@@ -1,4 +1,5 @@
 #include "Servo.h"
+#include "Wire.h"
 
 /* Program for self-driving robot
  * Senses objects using liDAR and ultrasonic and avoids them,
@@ -25,10 +26,10 @@
 #define ultraEcho45R 22
 #define ultraTrig20R 28
 #define ultraEcho20R 26
-#define ultraTrig5R 32
-#define ultraEcho5R 30
-#define ultraTrig5L 36
-#define ultraEcho5L 34
+#define ultraTrig7R 32
+#define ultraEcho7R 30
+#define ultraTrig4L 36
+#define ultraEcho4L 34
 #define ultraTrig20L 40
 #define ultraEcho20L 38
 #define ultraTrig45L 44
@@ -43,14 +44,15 @@
 #define rightMotorPin 3 // PWM
 Servo leftMotor;
 Servo rightMotor;
-float speed;
+float leftMotorSpeed;
+float rightMotorSpeed;
 
 // Ultrasonic sensors distances from different angles
 // ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
 float dist45R;
 float dist20R;
-float dist5R;
-float dist5L;
+float dist7R;
+float dist4L;
 float dist20L;
 float dist45L;
 
@@ -58,7 +60,7 @@ bool isNearZone; // aka did any ultrasonic detect something within 75cm?
 
 volatile int liDARdist; // the reading from the liDAR
 
-int16_t GyX,GyY,GyZ // variables for gyro raw data
+int16_t GyX,GyY,GyZ; // variables for gyro raw data
 const int MPU=0x68;
 
 void setup() {
@@ -83,11 +85,11 @@ void setup() {
   pinMode(ultraEcho20R, INPUT);
   pinMode(ultraTrig20R, OUTPUT);
   
-  pinMode(ultraEcho5R, INPUT);
-  pinMode(ultraTrig5R, OUTPUT);
+  pinMode(ultraEcho7R, INPUT);
+  pinMode(ultraTrig7R, OUTPUT);
   
-  pinMode(ultraEcho5L, INPUT);
-  pinMode(ultraTrig5L, OUTPUT);
+  pinMode(ultraEcho4L, INPUT);
+  pinMode(ultraTrig4L, OUTPUT);
   
   pinMode(ultraEcho20L, INPUT);
   pinMode(ultraTrig20L, OUTPUT);
@@ -103,11 +105,12 @@ void setup() {
   Wire.endTransmission(true);
 
   //Setup motor controllers
-  speed = 1500;
+  leftMotorSpeed = 1500;
+  rightMotorSpeed = 1500;
   leftMotor.attach(leftMotorPin);
-  leftMotor.writeMicroseconds(speed); //stopped
+  leftMotor.writeMicroseconds(leftMotorSpeed); //stopped
   rightMotor.attach(rightMotorPin);
-  rightMotor.writeMicroseconds(speed); //stopped
+  rightMotor.writeMicroseconds(rightMotorSpeed); //stopped
 }
 
 double readLiDAR() {
@@ -130,7 +133,7 @@ double readLiDAR() {
       unsigned int t2 = Serial1.read(); // byte 4 (Dist_H)
       t2 <<= 8; // shift one byte left
       t2 += t1;
-      liDARval = t2;
+      liDARdist = t2;
       for(int i=0; i<5; i++)Serial1.read(); // byte 7, 8, 9 are ignored
     }    
   }
@@ -159,32 +162,32 @@ void updateUltrasonic() {
   // Grab the new distance readings for all of the ultrasonics
   dist45R = readUltrasonic(ultraEcho45R, ultraEcho45R);
   dist20R = readUltrasonic(ultraEcho20R, ultraEcho20R);
-  dist5R = readUltrasonic(ultraEcho5R, ultraEcho5R);
-  dist5R = readUltrasonic(ultraEcho5L, ultraEcho5L);
-  dist20R = readUltrasonic(ultraEcho20L, ultraEcho20L);
-  dist45R = readUltrasonic(ultraEcho45L, ultraEcho45L);
+  dist7R = readUltrasonic(ultraEcho7R, ultraEcho7R);
+  dist4L = readUltrasonic(ultraEcho4L, ultraEcho4L);
+  dist20L = readUltrasonic(ultraEcho20L, ultraEcho20L);
+  dist45L = readUltrasonic(ultraEcho45L, ultraEcho45L);
 }
 
 float getReboundAngle() { // left is positive, right is negative
   // Bubble rebound algorithm using ultrasonic data to return the angle to 
   // get to the path with the fewest/furthest obstacles
-  float angle_dist = (45 * (dist45L - dist45R)) + (20 * (dist20L - dist20R)) + (5 * (dist5L - dist5R));
-  float sum = dist45L + dist20L + dist5L + dist5R + dist20R + dist45R;
+  float angle_dist = (45 * (dist45L - dist45R)) + (20 * (dist20L - dist20R)) + (4 * dist4L) - (7 * dist7R);
+  float sum = dist45L + dist20L + dist4L + dist7R + dist20R + dist45R;
   return angle_dist / sum;
 }
 
-void setMotorSpeed(int motorPin, double motorSpeed) {
+void setMotorSpeed(double leftSpeed, double rightSpeed) {
   /* Control the motor speed using the Victor888's
   *  1300   - full speed backwards
   *  1500 - stopped
   *  1700 - full speed forwards
   */
-  analogWrite(motorPin, motorSpeed);
+  leftMotor.writeMicroseconds(leftSpeed);
+  rightMotor.writeMicroseconds(rightSpeed);
 }
 
 void stopMotors() {
-  setMotorSpeed(leftMotor, 1500);
-  setMotorSpeed(rightMotor, 1500);
+  setMotorSpeed(1500, 1500);
 }
 
 void updateSpeed(int distance) { // distance is in cm
@@ -193,15 +196,17 @@ void updateSpeed(int distance) { // distance is in cm
      The further the nearest detected obstacle, the faster
      the speed up to a max of ___. <-- check with motor controller
   */
-  if (distance > 1000 && (speed + 5) < 1700) {
-    speed+=5;
-  } else if (distance < 500 && (speed - 5) > 1300) {
-    speed-=5;
+  if (distance > 1000 && (leftMotorSpeed + 5) < 1700) {
+    leftMotorSpeed+=5;
+    rightMotorSpeed+=5;
+  } else if (distance < 500 && (leftMotorSpeed - 5) > 1300) {
+    leftMotorSpeed-=5;
+    rightMotorSpeed-=5;
   }
 }
 
 void updateCompassModule() {
-  Wire.beginTransmission(MPU);
+  /*Wire.beginTransmission(MPU);
   Wire.write(0x3B);  
   Wire.endTransmission(false); //parameter indicates that the Arduino will send a restart. The connection is kept active
   Wire.requestFrom(MPU,12,true); //request a total of 12 registers 
@@ -209,7 +214,7 @@ void updateCompassModule() {
   GyX=Wire.read()<<8|Wire.read(); 
   GyY=Wire.read()<<8|Wire.read();  
   GyZ=Wire.read()<<8|Wire.read();  
-  int xAng = map(AcX,minVal,maxVal,-90,90); int yAng = map(AcY,minVal,maxVal,-90,90); int zAng = map(AcZ,minVal,maxVal,-90,90);
+  //int xAng = map(AcX,minVal,maxVal,-90,90); int yAng = map(AcY,minVal,maxVal,-90,90); int zAng = map(AcZ,minVal,maxVal,-90,90);
 
   x = RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
   
@@ -222,7 +227,7 @@ void updateCompassModule() {
   Serial.print("Gyroscope: "); //prints data from gyro, into readable data
   Serial.print("X = "); Serial.print(GyX);
   Serial.print(" | Y = "); Serial.print(GyY);
-  Serial.print(" | Z = "); Serial.println(GyZ);
+  Serial.print(" | Z = "); Serial.println(GyZ);*/
 }
 
 float getHeading() {
@@ -234,20 +239,19 @@ void loop() {
   updateUltrasonic();
   if (isNearZone) { // an object is detected within 75cm
     float reboundAngle = getReboundAngle();
-    float startingHeading = getHeading()
+    float startingHeading = getHeading();
     float currentHeading = startingHeading;
     
       if (reboundAngle > 0) { // must turn left
-        int leftMotorSpeed = 1600;
-        int rightMotorSpeed = 1300;
+        leftMotorSpeed = 1600;
+        rightMotorSpeed = 1300;
       } else { //turn right
-        int leftMotorSpeed = 1300;
-        int rightMotorSpeed = 1600;
+        leftMotorSpeed = 1300;
+        rightMotorSpeed = 1600;
       }
     
       while (abs(currentHeading - startingHeading) > reboundAngle) {
-          setMotorSpeed(leftMotor, leftMotorSpeed);
-          setMotorSpeed(rightMotor, rightMotorSpeed);
+          setMotorSpeed(leftMotorSpeed, rightMotorSpeed);
           delay(50);
           stopMotors();
           currentHeading = getHeading();
@@ -255,8 +259,7 @@ void loop() {
   } else { // There is nothing within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
-    setMotorSpeed(leftMotor, speed);
-    setMotorSpeed(rightMotor, speed);
+    setMotorSpeed(leftMotorSpeed, rightMotorSpeed);
   }
   delay(100);
 }
