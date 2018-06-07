@@ -35,8 +35,8 @@
 #define ultraEcho45L 42
 
 // Compass module pins
-#define gyroSDA A0
-#define gyroSCL A1
+#define gyroSDA 20 // must be these ports; arduino default
+#define gyroSCL 21 // must be these ports; arduino default
 
 // Victor888 motor controller pins
 #define leftMotorPin 2 // PWM
@@ -193,10 +193,10 @@ void updateSpeed(int distance) { // distance is in cm
      The further the nearest detected obstacle, the faster
      the speed up to a max of ___. <-- check with motor controller
   */
-  if (distance > 1000 && (speed + 1) < 255) {
-    speed++;
-  } else if (distance < 500 && (speed - 1) > 127) {
-    speed--;
+  if (distance > 1000 && (speed + 5) < 1700) {
+    speed+=5;
+  } else if (distance < 500 && (speed - 5) > 1300) {
+    speed-=5;
   }
 }
 
@@ -255,7 +255,6 @@ void loop() {
   } else { // There is nothing within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
-    // add speed control stuff here
     setMotorSpeed(leftMotor, speed);
     setMotorSpeed(rightMotor, speed);
   }
