@@ -1,5 +1,6 @@
 #include "Servo.h"
 #include "Wire.h"
+#include "I2Cdev.h"
 
 /* Program for self-driving robot
  * Senses objects using liDAR and ultrasonic and avoids them,
@@ -98,6 +99,39 @@ void setup() {
   pinMode(ultraTrig44L, OUTPUT);
 
   // Setup compass module
+  
+   Serial.begin(38400);
+
+    // initialize device
+    Serial.println("Initializing I2C devices...");
+    accelgyro.initialize();
+
+    // verify connection
+    Serial.println("Testing device connections...");
+    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
+    // use the code below to change accel/gyro offset values
+    /
+    Serial.println("Updating internal sensor offsets...");
+    // -76	-2359	1688	0	0	0
+    Serial.print(accelgyro.getXAccelOffset()); Serial.print("\t"); // -76
+    Serial.print(accelgyro.getYAccelOffset()); Serial.print("\t"); // -2359
+    Serial.print(accelgyro.getZAccelOffset()); Serial.print("\t"); // 1688
+    Serial.print(accelgyro.getXGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getYGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getZGyroOffset()); Serial.print("\t"); // 0
+    Serial.print("\n");
+    accelgyro.setXGyroOffset(220);
+    accelgyro.setYGyroOffset(76);
+    accelgyro.setZGyroOffset(-85);
+    Serial.print(accelgyro.getXAccelOffset()); Serial.print("\t"); // -76
+    Serial.print(accelgyro.getYAccelOffset()); Serial.print("\t"); // -2359
+    Serial.print(accelgyro.getZAccelOffset()); Serial.print("\t"); // 1688
+    Serial.print(accelgyro.getXGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getYGyroOffset()); Serial.print("\t"); // 0
+    Serial.print(accelgyro.getZGyroOffset()); Serial.print("\t"); // 0
+    Serial.print("\n");
+  
   Wire.begin();
   Wire.beginTransmission(MPU); // begins a trnasmission to the GY-521
   Wire.write(0x6B); 
@@ -208,30 +242,31 @@ void updateSpeed(int distance) { // distance is in cm
 }
 
 void updateCompassModule() {
-  /*Wire.beginTransmission(MPU);
-  Wire.write(0x3B);  
-  Wire.endTransmission(false); //parameter indicates that the Arduino will send a restart. The connection is kept active
-  Wire.requestFrom(MPU,12,true); //request a total of 12 registers 
+ 
   
-  GyX=Wire.read()<<8|Wire.read(); 
-  GyY=Wire.read()<<8|Wire.read();  
-  GyZ=Wire.read()<<8|Wire.read();  
-  //int xAng = map(AcX,minVal,maxVal,-90,90); int yAng = map(AcY,minVal,maxVal,-90,90); int zAng = map(AcZ,minVal,maxVal,-90,90);
+ // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  x = RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+    #ifdef OUTPUT_READABLE_ACCELGYRO
+        // display tab-separated accel/gyro x/y/z values
+        Serial.print("a/g:\t");
+        Serial.print(ax); Serial.print("\t");
+        Serial.print(ay); Serial.print("\t");
+        Serial.print(az); Serial.print("\t");
+        Serial.print(gx); Serial.print("\t");
+        Serial.print(gy); Serial.print("\t");
+        Serial.println(gz);
+    #endif
+
+    #ifdef OUTPUT_BINARY_ACCELGYRO
+        Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF));
+        Serial.write((uint8_t)(ay >> 8)); Serial.write((uint8_t)(ay & 0xFF));
+        Serial.write((uint8_t)(az >> 8)); Serial.write((uint8_t)(az & 0xFF));
+        Serial.write((uint8_t)(gx >> 8)); Serial.write((uint8_t)(gx & 0xFF));
+        Serial.write((uint8_t)(gy >> 8)); Serial.write((uint8_t)(gy & 0xFF));
+        Serial.write((uint8_t)(gz >> 8)); Serial.write((uint8_t)(gz & 0xFF));
+    #endif
   
-  Serial.print("AngleX= "); Serial.println(x);
-
-  Serial.print("AngleY= "); Serial.println(y);
-
-  Serial.print("AngleZ= "); Serial.println(z); Serial.println("-------"); delay(100); //don't know how to grab current heading, can find angle with gyro though.
-  
-  Serial.print("Gyroscope: "); //prints data from gyro, into readable data
-  Serial.print("X = "); Serial.print(GyX);
-  Serial.print(" | Y = "); Serial.print(GyY);
-  Serial.print(" | Z = "); Serial.println(GyZ);*/
-}
-
 float getHeading() {
   updateCompassModule();
   // rando mathy stuff LUUUUUUUCCCCCCCCCCCC
