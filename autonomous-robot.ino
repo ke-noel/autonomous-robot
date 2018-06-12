@@ -20,24 +20,29 @@
   green - liDAR TX (to Arduino RX)  
 */
 
+volatile int liDARdist; // the reading from the liDAR
+
 // Ultrasonic pin definitions
 // arranged at 45, 20 and 5 degrees from the left and right
-#define ultraTrig45R 24
-#define ultraEcho45R 22
-#define ultraTrig20R 28
-#define ultraEcho20R 26
-#define ultraTrig7R 32
-#define ultraEcho7R 30
-#define ultraTrig4L 36
-#define ultraEcho4L 34
-#define ultraTrig20L 40
-#define ultraEcho20L 38
-#define ultraTrig45L 44
-#define ultraEcho45L 42
+#define ultraTrig44L 24
+#define ultraEcho44L 22
+#define ultraTrig21L 28
+#define ultraEcho21L 26
+#define ultraTrig4L 32
+#define ultraEcho4L 30
+#define ultraTrig7R 36
+#define ultraEcho7R 34
+#define ultraTrig21R 40
+#define ultraEcho21R 38
+#define ultraTrig47R 44
+#define ultraEcho47R 42
 
 // Compass module pins
 #define gyroSDA 20 // must be these ports; arduino default
 #define gyroSCL 21 // must be these ports; arduino default
+
+int16_t GyX,GyY,GyZ; // variables for gyro raw data
+const int MPU=0x68;
 
 // Victor888 motor controller pins
 #define leftMotorPin 2 // PWM
@@ -49,19 +54,14 @@ float rightMotorSpeed;
 
 // Ultrasonic sensors distances from different angles
 // ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
-float dist45R;
-float dist20R;
+float dist47R;
+float dist21R;
 float dist7R;
 float dist4L;
-float dist20L;
-float dist45L;
+float dist21L;
+float dist44L;
 
 bool isNearZone; // aka did any ultrasonic detect something within 75cm?
-
-volatile int liDARdist; // the reading from the liDAR
-
-int16_t GyX,GyY,GyZ; // variables for gyro raw data
-const int MPU=0x68;
 
 void setup() {
   Serial1.begin(115200); // HW serial for liDAR
@@ -79,11 +79,11 @@ void setup() {
   Serial1.write(0x06);
   
   // Setup ultrasonics
-  pinMode(ultraEcho45R, INPUT);
-  pinMode(ultraTrig45R, OUTPUT);
+  pinMode(ultraEcho47R, INPUT);
+  pinMode(ultraTrig47R, OUTPUT);
   
-  pinMode(ultraEcho20R, INPUT);
-  pinMode(ultraTrig20R, OUTPUT);
+  pinMode(ultraEcho21R, INPUT);
+  pinMode(ultraTrig21R, OUTPUT);
   
   pinMode(ultraEcho7R, INPUT);
   pinMode(ultraTrig7R, OUTPUT);
@@ -91,11 +91,11 @@ void setup() {
   pinMode(ultraEcho4L, INPUT);
   pinMode(ultraTrig4L, OUTPUT);
   
-  pinMode(ultraEcho20L, INPUT);
-  pinMode(ultraTrig20L, OUTPUT);
+  pinMode(ultraEcho21L, INPUT);
+  pinMode(ultraTrig21L, OUTPUT);
   
-  pinMode(ultraEcho45R, INPUT);
-  pinMode(ultraTrig45R, OUTPUT);
+  pinMode(ultraEcho44L, INPUT);
+  pinMode(ultraTrig44L, OUTPUT);
 
   // Setup compass module
   Wire.begin();
@@ -115,7 +115,6 @@ void setup() {
 
 double readLiDAR() {
   // Returns the current distance read by the liDAR
-  // SHOULD BE IN ITS OWN THREAD
   /* Input format for TFMini liDAR
     1) 0x59
     2) 0x59
@@ -127,17 +126,20 @@ double readLiDAR() {
     8) Original signal quality degree
     9) Checksum parity bit (low 8bit), checksum = Byte1 + Byte2 + ... + Byte8 
   */
-  if(Serial1.available()>=9) { // there should be 9 bytes of input
-    if((0x59 == Serial1.read()) && (0x59 == Serial1.read())) { // byte 1 and 2
-      unsigned int t1 = Serial1.read(); // byte 3 (Dist_L)
-      unsigned int t2 = Serial1.read(); // byte 4 (Dist_H)
-      t2 <<= 8; // shift one byte left
-      t2 += t1;
-      liDARdist = t2;
-      for(int i=0; i<5; i++)Serial1.read(); // byte 7, 8, 9 are ignored
-    }    
+  while(true)
+  {
+    while(Serial1.available()>=9) { // there should be 9 bytes of input
+      if((0x59 == Serial1.read()) && (0x59 == Serial1.read())) { // byte 1 and 2
+        unsigned int t1 = Serial1.read(); // byte 3 (Dist_L)
+        unsigned int t2 = Serial1.read(); // byte 4 (Dist_H)
+        t2 <<= 8; // shift one byte left
+        t2 += t1;
+        liDARdist = t2;
+        for(int i=0; i<5; i++)Serial1.read(); // byte 5, 6, 7, 8, 9 are ignored
+      }    
+    }
+    return liDARdist; // in cm
   }
-  return liDARdist; // in cm
 }
 
 float readUltrasonic(int echoPin, int trigPin) {
@@ -160,19 +162,19 @@ float readUltrasonic(int echoPin, int trigPin) {
 
 void updateUltrasonic() {
   // Grab the new distance readings for all of the ultrasonics
-  dist45R = readUltrasonic(ultraEcho45R, ultraEcho45R);
-  dist20R = readUltrasonic(ultraEcho20R, ultraEcho20R);
+  dist47R = readUltrasonic(ultraEcho47R, ultraEcho47R);
+  dist21R = readUltrasonic(ultraEcho21R, ultraEcho21R);
   dist7R = readUltrasonic(ultraEcho7R, ultraEcho7R);
   dist4L = readUltrasonic(ultraEcho4L, ultraEcho4L);
-  dist20L = readUltrasonic(ultraEcho20L, ultraEcho20L);
-  dist45L = readUltrasonic(ultraEcho45L, ultraEcho45L);
+  dist21L = readUltrasonic(ultraEcho21L, ultraEcho21L);
+  dist44L = readUltrasonic(ultraEcho44L, ultraEcho44L);
 }
 
 float getReboundAngle() { // left is positive, right is negative
   // Bubble rebound algorithm using ultrasonic data to return the angle to 
   // get to the path with the fewest/furthest obstacles
-  float angle_dist = (45 * (dist45L - dist45R)) + (20 * (dist20L - dist20R)) + (4 * dist4L) - (7 * dist7R);
-  float sum = dist45L + dist20L + dist4L + dist7R + dist20R + dist45R;
+  float angle_dist = (44.32 * dist44L) - (46.55 * dist47R) + (21 * (dist21L - dist21R)) + (4.19 * dist4L) - (7.45 * dist7R);
+  float sum = dist44L + dist21L + dist4L + dist7R + dist21R + dist47R;
   return angle_dist / sum;
 }
 
