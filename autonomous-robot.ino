@@ -1,7 +1,3 @@
-#include "Servo.h"
-#include "Wire.h"
-#include "I2Cdev.h"
-#include "MPU6050.h"
 /* Program for self-driving robot
  * Senses objects using liDAR and ultrasonic and avoids them,
  * prioritizing ultrasonic. A bubble rebound algorithm is used
@@ -10,15 +6,19 @@
  * determine speed; the further away the object detected, the 
  * faster the speed.
  *
- * The ultrasonic detection zone will be referred to as the near zone.
- * The liDAR detection zone will be referred to as the far zone.
+ * Up to 75 cm away from the robot will be referred to as the near zone.
  */
 
+#include "Servo.h"
+#include "Wire.h"
+#include "I2Cdev.h"
+#include "MPU6050.h"
+
 /* LiDAR pins
-  black - GND (to Arduino GND)
-  red --- 5V (to Arduino 5V)
-  white - liDAR RX (to Arduino TX)
-  green - liDAR TX (to Arduino RX)  
+  GND -- Arduino GND
+  5V  -- Arduino 5V
+  RX  -- Arduino TX1 18
+  TX  -- Arduino RX1 19
 */
 
 volatile int liDARdist; // the reading from the liDAR
@@ -38,9 +38,12 @@ volatile int liDARdist; // the reading from the liDAR
 #define ultraTrig47R 44
 #define ultraEcho47R 42
 
-// Compass module pins
-#define gyroSDA 20 // must be these ports; arduino default
-#define gyroSCL 21 // must be these ports; arduino default
+/* Compass module pins
+  GND -- Arduino GND
+  5V  -- Arduino 5V)
+  SDA -- Arduino SDA 20
+  SCL -- Arduino SCL 21
+*/
 
 const int MPU_addr=0x68;
 const int MPU=0x68; 
@@ -57,7 +60,7 @@ float leftMotorSpeed;
 float rightMotorSpeed;
 
 // Ultrasonic sensors distances from different angles
-// ex. dist45R is the distance measured by the ultrasonic at 45 degrees on the right side
+// ex. dist47R is the distance measured by the ultrasonic at 47 degrees on the right side
 float dist47R;
 float dist21R;
 float dist7R;
@@ -68,11 +71,13 @@ float dist44L;
 bool isNearZone; // aka did any ultrasonic detect something within 75cm?
 
 void setup() {
-  Serial1.begin(115200); // HW serial for liDAR
   Serial.begin(9600); // USB to computer serial
+  Serial1.begin(115200); // HW serial for liDAR
+  Serial.println("-----------STARTING UP-----------");
+  
   delay(100);
-
-  // Setup TFMini for standard output mode
+  
+  Serial.println("Setting up TFMini for standard output mode...");
   Serial1.write(0x42);
   Serial1.write(0x57);
   Serial1.write(0x02);
@@ -82,7 +87,7 @@ void setup() {
   Serial1.write(0x01);
   Serial1.write(0x06);
   
-  // Setup ultrasonics
+  Serial.print("Setting up ultrasonic pins...");
   pinMode(ultraEcho47R, INPUT);
   pinMode(ultraTrig47R, OUTPUT);
   
@@ -101,15 +106,24 @@ void setup() {
   pinMode(ultraEcho44L, INPUT);
   pinMode(ultraTrig44L, OUTPUT);
 
-  // Setup compass module
-    Wire.begin();
+  Serial.println("Setting up compass module...");
+  Wire.begin();
   Wire.beginTransmission(MPU);
   Wire.write(0x6B); 
   Wire.write(0);    
   Wire.endTransmission(true);
-  Serial.begin(9600);
+  
+  Serial.println("Setting up motor controllers...");
+  leftMotor.attach(leftMotorPin);
+  leftMotor.writeMicroseconds(1500); //stopped
+  rightMotor.attach(rightMotorPin);
+  rightMotor.writeMicroseconds(1500); //stopped
+  
+  Serial.println("Program ready.");
 }
-void loop(){
+
+// This can't be here; there can only be one loop function, and we just need the heading
+/*void loop(){
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);  
   Wire.endTransmission(false);
@@ -141,15 +155,7 @@ Serial.print("AngleX= "); Serial.println(x);
 Serial.print("AngleY= "); Serial.println(z);
 Serial.println("-----------------------------------------");
 delay(400);
-  
-  //Setup motor controllers
-  leftMotorSpeed = 1500;
-  rightMotorSpeed = 1500;
-  leftMotor.attach(leftMotorPin);
-  leftMotor.writeMicroseconds(leftMotorSpeed); //stopped
-  rightMotor.attach(rightMotorPin);
-  rightMotor.writeMicroseconds(rightMotorSpeed); //stopped
-}
+ */
 
 double readLiDAR() {
   // Returns the current distance read by the liDAR
@@ -164,7 +170,7 @@ double readLiDAR() {
     8) Original signal quality degree
     9) Checksum parity bit (low 8bit), checksum = Byte1 + Byte2 + ... + Byte8 
   */
-  while(true)
+  while(true) // stay in loop until measurement is taken
   {
     while(Serial1.available()>=9) { // there should be 9 bytes of input
       if((0x59 == Serial1.read()) && (0x59 == Serial1.read())) { // byte 1 and 2
@@ -183,11 +189,11 @@ double readLiDAR() {
 float readUltrasonic(int echoPin, int trigPin) {
   // Return the current distance reading from the specified ultrasonic
   // Flag isNearZone if something's within 75cm
-  digitalWrite(echoPin + 1, LOW);
+  digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
-  digitalWrite(echoPin + 1, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(echoPin + 1, LOW);
+  digitalWrite(trigPin, LOW);
   float duration = pulseIn(echoPin, HIGH);
   float distance = duration * 0.0345 / 2; // in cm
   if (distance < 3 || distance > 275) { // ultrasonic rated accurate from 3 to 300 cm
@@ -206,6 +212,14 @@ void updateUltrasonic() {
   dist4L = readUltrasonic(ultraEcho4L, ultraEcho4L);
   dist21L = readUltrasonic(ultraEcho21L, ultraEcho21L);
   dist44L = readUltrasonic(ultraEcho44L, ultraEcho44L);
+  
+  Serial.print("Ultrasonic distance: ");
+  Serial.print(dist44L); Serial.print("cm | "); 
+  Serial.print(dist21L); Serial.print("cm | "); 
+  Serial.print(dist4L); Serial.print("cm | ");
+  Serial.print(dist7R); Serial.print("cm | ");
+  Serial.print(dist21R); Serial.print("cm | ");
+  Serial.print(dist47R); Serial.println("cm");
 }
 
 float getReboundAngle() { // left is positive, right is negative
@@ -216,14 +230,14 @@ float getReboundAngle() { // left is positive, right is negative
   return angle_dist / sum;
 }
 
-void setMotorSpeed(double leftSpeed, double rightSpeed) {
+void setMotorSpeed(double left, double right) {
   /* Control the motor speed using the Victor888's
   *  1300   - full speed backwards
   *  1500 - stopped
   *  1700 - full speed forwards
   */
-  leftMotor.writeMicroseconds(leftSpeed);
-  rightMotor.writeMicroseconds(rightSpeed);
+  leftMotor.writeMicroseconds(left);
+  rightMotor.writeMicroseconds(right);
 }
 
 void stopMotors() {
@@ -246,11 +260,11 @@ void updateSpeed(int distance) { // distance is in cm
 }
 
 void updateCompassModule() {
- 
-  
+  // needs to be moved here
+}
+
 float getHeading() {
-  updateCompassModule();
-  // rando mathy stuff LUUUUUUUCCCCCCCCCCCC
+  return 0.0; //placeholder
 }
 
 void loop() {
@@ -260,21 +274,24 @@ void loop() {
     float startingHeading = getHeading();
     float currentHeading = startingHeading;
     
-      if (reboundAngle > 0) { // must turn left
-        leftMotorSpeed = 1600;
-        rightMotorSpeed = 1300;
-      } else { //turn right
-        leftMotorSpeed = 1300;
-        rightMotorSpeed = 1600;
-      }
+    Serial.print("Rebound angle: "); Serial.println(reboundAngle);
     
-      while (abs(currentHeading - startingHeading) > reboundAngle) {
-          setMotorSpeed(leftMotorSpeed, rightMotorSpeed);
-          delay(50);
-          stopMotors();
-          currentHeading = getHeading();
-      }
-  } else { // There is nothing within 75cm
+    if (reboundAngle > 0) { // must turn left
+      leftMotorSpeed = 1600;
+      rightMotorSpeed = 1300;
+    } else { //turn right
+      leftMotorSpeed = 1300;
+      rightMotorSpeed = 1600;
+    }
+    while (abs(currentHeading - startingHeading) < reboundAngle) {
+      // turn until the rebound angle is reached
+      Serial.print("Current angle: "); Serial.println(currentHeading - startingHeading);
+      setMotorSpeed(leftMotorSpeed, rightMotorSpeed);
+      delay(50);
+      stopMotors();
+      currentHeading = getHeading();
+    }
+  } else { // there's nothing detected within 75cm
     // Increase or decrease speed based on the closest object detected by the liDAR
     updateSpeed(readLiDAR());
     setMotorSpeed(leftMotorSpeed, rightMotorSpeed);
