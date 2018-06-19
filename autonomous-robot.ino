@@ -122,41 +122,6 @@ void setup() {
   Serial.println("Program ready.");
 }
 
-// This can't be here; there can only be one loop function, and we just need the heading
-/*void loop(){
-  Wire.beginTransmission(MPU);
-  Wire.write(0x3B);  
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU,12,true);  
-  AcX=Wire.read()<<8|Wire.read();     
-  AcZ=Wire.read()<<8|Wire.read();  
-  GyX=Wire.read()<<8|Wire.read();  
-  GyZ=Wire.read()<<8|Wire.read();  
-  
-  Serial.print("Accelerometer: ");
-  Serial.print("X = "); Serial.print(AcX);
-  Serial.print(" | Y = "); Serial.println(AcZ); 
-  
-  Serial.print("Gyroscope: ");
-  Serial.print("X = "); Serial.print(GyX);
-  Serial.print(" | Y = "); Serial.println(GyZ);
-  Serial.println(" ");
-  delay(500);
-  AcX=Wire.read()<<8|Wire.read();
-  AcZ=Wire.read()<<8|Wire.read();
-  
-  int xAng = map(AcX,minVal,maxVal,-90,90);
-  int yAng = map(AcY,minVal,maxVal,-90,90);
-  int zAng = map(AcZ,minVal,maxVal,-90,90);
-
-x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
-
-Serial.print("AngleX= "); Serial.println(x);
-Serial.print("AngleY= "); Serial.println(z);
-Serial.println("-----------------------------------------");
-delay(400);
- */
-
 double readLiDAR() {
   // Returns the current distance read by the liDAR
   /* Input format for TFMini liDAR
@@ -268,6 +233,34 @@ float getHeading() {
 }
 
 void loop() {
+  
+   Wire.beginTransmission(MPU);
+  Wire.write(0x3B);  
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU,12,true);  
+  GyX=Wire.read()<<8|Wire.read();  
+  GyZ=Wire.read()<<8|Wire.read();  
+   
+  Serial.print("Gyroscope: ");
+  Serial.print("X = "); Serial.print(GyX);
+  Serial.print(" | Y = "); Serial.println(GyZ);
+  Serial.println(" ");
+  delay(500);
+  AcX=Wire.read()<<8|Wire.read();
+  AcZ=Wire.read()<<8|Wire.read();
+  
+  int xAng = map(AcX,minVal,maxVal,-90,90);
+  int yAng = map(AcY,minVal,maxVal,-90,90);
+  int zAng = map(AcZ,minVal,maxVal,-90,90);
+
+x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
+
+Serial.print("AngleX= "); Serial.println(x);
+Serial.print("AngleY= "); Serial.println(z);
+Serial.println("-----------------------------------------");
+delay(400);
+
+
   updateUltrasonic();
   if (isNearZone) { // an object is detected within 75cm
     float reboundAngle = getReboundAngle();
