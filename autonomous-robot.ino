@@ -229,24 +229,22 @@ void updateCompassModule() {
 }
 
 float getHeading() {
-  return 0.0; //placeholder
-}
-
-void loop() {
-  
-   Wire.beginTransmission(MPU);
+    Wire.beginTransmission(MPU);
   Wire.write(0x3B);  
   Wire.endTransmission(false);
   Wire.requestFrom(MPU,12,true);  
   GyX=Wire.read()<<8|Wire.read();  
+  GyY=Wire.read()<<8|Wire.read();  
   GyZ=Wire.read()<<8|Wire.read();  
    
   Serial.print("Gyroscope: ");
   Serial.print("X = "); Serial.print(GyX);
-  Serial.print(" | Y = "); Serial.println(GyZ);
+  Serial.print(" | Y = "); Serial.println(GyY);
+  Serial.print(" | Z = "); Serial.println(GyZ);
   Serial.println(" ");
   delay(500);
   AcX=Wire.read()<<8|Wire.read();
+  AcY=Wire.read()<<8|Wire.read();
   AcZ=Wire.read()<<8|Wire.read();
   
   int xAng = map(AcX,minVal,maxVal,-90,90);
@@ -256,9 +254,13 @@ void loop() {
 x= RAD_TO_DEG * (atan2(-yAng, -zAng)+PI); y= RAD_TO_DEG * (atan2(-xAng, -zAng)+PI); z= RAD_TO_DEG * (atan2(-yAng, -xAng)+PI);
 
 Serial.print("AngleX= "); Serial.println(x);
-Serial.print("AngleY= "); Serial.println(z);
+Serial.print("AngleY= "); Serial.println(y);
+Serial.print("AngleZ= "); Serial.println(z);
 Serial.println("-----------------------------------------");
 delay(400);
+}
+
+void loop() {
 
 
   updateUltrasonic();
